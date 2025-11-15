@@ -2,9 +2,9 @@
 
 echo "=== DB Backup Cron Installer ==="
 
-BACKUP_DIR="/root/Lowland-Mysql-Backup"
+BACKUP_DIR="/opt/db-backup"
 PYTHON_ENV="$BACKUP_DIR/.venv/bin/activate"
-PYTHON_SCRIPT="$BACKUP_DIR/main.py"
+PYTHON_SCRIPT="$BACKUP_DIR/backup.py"
 CRON_LOG="$BACKUP_DIR/backup.log"
 
 # Controle
@@ -32,9 +32,10 @@ echo "2) Elk uur"
 echo "3) Elke 6 uur"
 echo "4) Zelf custom cron patroon invoeren"
 echo "5) Cronjob verwijderen (uninstall)"
+echo "6) Run cron now (test 1x en daarna verwijderen)"
 echo ""
 
-read -p "Kies een optie (1-5): " OPTIE
+read -p "Kies een optie (1-6): " OPTIE
 echo ""
 
 case "$OPTIE" in
@@ -58,14 +59,49 @@ case "$OPTIE" in
     5)
         echo "Verwijder alle cronjobs die verwijzen naar: $PYTHON_SCRIPT"
         TMPFILE=$(mktemp)
-
         crontab -l 2>/dev/null | grep -v "$PYTHON_SCRIPT" > "$TMPFILE"
+        crontab "$TMPFILE"
+        rm "$TMPFILE"
+        echo ""
+        echo "Cronjobs succesvol verwijderd!"
+        echo "Gebruik 'crontab -l' om te controleren."
+        echo ""
+        exit 0
+        ;;
+
+    6)
+        echo "[TEST] Cron test mode: draait backup 1 keer en verwijdert daarna de regel."
+        
+        # test cronregel binnen 1 minuut uitvoeren
+        NOW_MINUTE=$(date +%M)
+        NEXT_MINUTE=$(( (10#$NOW_MINUTE + 1) % 60 ))
+
+        TEST_CRON="$NEXT_MINUTE * * * * cd $BACKUP_DIR && . $PYTHON_ENV && python3 $PYTHON_SCRIPT >> $CRON_LOG 2>&1 #TESTBACKUP"
+
+        # bestaande testregels verwijderen
+        TMPFILE=$(mktemp)
+        crontab -l 2>/dev/null | grep -v "#TESTBACKUP" > "$TMPFILE"
+        echo "$TEST_CRON" >> "$TMPFILE"
         crontab "$TMPFILE"
         rm "$TMPFILE"
 
         echo ""
-        echo "Cronjobs succesvol verwijderd!"
-        echo "Gebruik 'crontab -l' om te controleren."
+        echo "[TEST] Cron draait binnen 1 minuut..."
+        echo "Wachten op uitvoering..."
+        sleep 75
+
+        echo ""
+        echo "[TEST] Verwijder test cronregel..."
+        TMPFILE=$(mktemp)
+        crontab -l 2>/dev/null | grep -v "#TESTBACKUP" > "$TMPFILE"
+        crontab "$TMPFILE"
+        rm "$TMPFILE"
+
+        echo ""
+        echo "[TEST] Test cron uitgevoerd en verwijderd."
+        echo ""
+        echo "Controleer de log:"
+        echo "  cat $CRON_LOG"
         echo ""
         exit 0
         ;;
